@@ -1,0 +1,20 @@
+[tool.ruff]
+line-length = 150
+indent-width = 4
+target-version = "py313"
+exclude = [
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+    "venv",
+    ".venv",
+    "migrations",
+]
+fix = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "tab"
+line-ending = "lf"
+docstring-code-format = true
