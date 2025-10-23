@@ -6,7 +6,7 @@ import httpx
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from .settings import LLM_URL, N_PREDICT, TEMPERATURE, TOP_K, TOP_P
+from .settings import LLM_URL, N_PREDICT, TEMPERATURE, TOP_K, TOP_P, MAX_CTX_DOCS
 from .retrieval import search_reports
 from .prompts import build_prompt
 
@@ -14,9 +14,7 @@ app = FastAPI(title="RAG API - Mistral + SQLite FTS5")
 
 
 class AskRequest(BaseModel):
-    question: str
-    k: Optional[int] = 6
-    filters: Optional[Dict[str, Any]] = None
+    texto: str
 
 
 class AskResponse(BaseModel):
@@ -27,8 +25,8 @@ class AskResponse(BaseModel):
 
 @app.post("/ask", response_model=AskResponse)
 async def ask(req: AskRequest) -> AskResponse:
-    contexts, used_fts = search_reports(req.question, k=req.k or 6, filters=req.filters)
-    prompt = build_prompt(contexts, req.question)
+    contexts, used_fts = search_reports(req.texto, k=MAX_CTX_DOCS, filters=None)
+    prompt = build_prompt(contexts, req.texto)
 
     payload = {
         "prompt": prompt,
@@ -48,6 +46,6 @@ async def ask(req: AskRequest) -> AskResponse:
     return AskResponse(answer=text, contexts=contexts, used_fts=used_fts)
 
 
-@app.get("/health")
-async def health() -> Dict[str, str]:
+@app.get("/status")
+async def status() -> Dict[str, str]:
     return {"status": "ok"}
