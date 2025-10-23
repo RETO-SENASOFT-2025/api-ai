@@ -6,7 +6,7 @@ import httpx
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from .settings import LLM_URL, N_PREDICT, TEMPERATURE, TOP_K, TOP_P, MAX_CTX_DOCS
+from .settings import LLM_URL, N_PREDICT, TEMPERATURE, TOP_K, TOP_P, MAX_CTX_DOCS, LLM_TIMEOUT_SECONDS
 from .retrieval import search_reports
 from .prompts import build_prompt
 
@@ -36,12 +36,20 @@ async def ask(req: AskRequest) -> AskResponse:
         "top_p": TOP_P,
     }
 
-    async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as client:
-        r = await client.post(f"{LLM_URL}/completion", json=payload)
-        r.raise_for_status()
-        data = r.json()
-        # Try multiple possible keys depending on server version
-        text = data.get("content") or data.get("result") or data.get("text") or ""
+    async with httpx.AsyncClient(timeout=httpx.Timeout(LLM_TIMEOUT_SECONDS)) as client:
+        try:
+            r = await client.post(f"{LLM_URL}/completion", json=payload)
+            r.raise_for_status()
+            data = r.json()
+            # Try multiple possible keys depending on server version
+            text = data.get("content") or data.get("result") or data.get("text") or ""
+        except httpx.TimeoutException:
+            text = (
+                "El modelo tardó demasiado en responder; se agotó el tiempo de espera. "
+                "Prueba una consulta más breve o vuelve a intentarlo más tarde."
+            )
+        except httpx.HTTPError as e:
+            text = f"No se pudo contactar el modelo: {str(e)}"
 
     return AskResponse(answer=text, contexts=contexts, used_fts=used_fts)
 
@@ -49,3 +57,4 @@ async def ask(req: AskRequest) -> AskResponse:
 @app.get("/status")
 async def status() -> Dict[str, str]:
     return {"status": "ok"}
+
