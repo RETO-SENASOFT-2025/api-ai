@@ -16,6 +16,7 @@ RUN pip install --no-cache-dir fastapi uvicorn httpx
 COPY app/ ./app/
 
 ENV DB_PATH=/app/data/db/reports.sqlite \
-    LLM_URL=http://llm:8080
+    LLM_URL=http://llm:8081
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8011"]
+
