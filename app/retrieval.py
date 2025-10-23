@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import re
 from typing import List, Dict, Any, Optional, Tuple
 
 from .settings import DB_PATH
@@ -18,6 +19,13 @@ def _has_fts(conn: sqlite3.Connection) -> bool:
     )
     row = cur.fetchone()
     return bool(row and row["sql"] and "using fts5" in row["sql"].lower())
+
+
+def _fts_safe_query(q: str) -> str:
+    # Remove punctuation that breaks FTS grammar (e.g., commas) and normalize spaces
+    s = re.sub(r"[^\w\s]", " ", q)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
 
 
 def _apply_filters(where: List[str], params: List[Any], filters: Optional[Dict[str, Any]]) -> None:
@@ -51,38 +59,36 @@ def search_reports(query: str, k: int = 8, filters: Optional[Dict[str, Any]] = N
         where_clause = (" AND ".join(where)) if where else "1=1"
 
         if used_fts:
-            sql_fts = (
-                "SELECT r.id, r.comentario, r.ciudad, r.categoria_problema, r.fecha_reporte, r.urgente "
-                "FROM report_search JOIN reports r ON r.id = report_search.rowid "
-                "WHERE (report_search MATCH ?) AND (" + where_clause + ") "
-                "ORDER BY bm25(report_search) LIMIT ?"
-            )
-            params_fts = [query] + filters_params + [k]
-            try:
-                rows = conn.execute(sql_fts, params_fts).fetchall()
-            except sqlite3.OperationalError:
-                # Fallback gracefully if FTS is misconfigured or unavailable
+            fts_q = _fts_safe_query(query)
+            if not fts_q:
+                # If after sanitization the query is empty, skip FTS
                 used_fts = False
-                like = f"%{query}%"
-                sql_like = (
+            else:
+                sql_fts = (
                     "SELECT r.id, r.comentario, r.ciudad, r.categoria_problema, r.fecha_reporte, r.urgente "
-                    "FROM reports r WHERE (r.comentario LIKE ? OR r.ciudad LIKE ? OR r.categoria_problema LIKE ?) "
-                    "AND (" + where_clause + ") ORDER BY r.fecha_reporte DESC LIMIT ?"
+                    "FROM report_search JOIN reports r ON r.id = report_search.rowid "
+                    "WHERE (report_search MATCH ?) AND (" + where_clause + ") "
+                    "ORDER BY bm25(report_search) LIMIT ?"
                 )
-                params_like = [like, like, like] + filters_params + [k]
-                rows = conn.execute(sql_like, params_like).fetchall()
-        else:
-            # Fallback LIKE across important text columns
-            like = f"%{query}%"
-            sql_like = (
-                "SELECT r.id, r.comentario, r.ciudad, r.categoria_problema, r.fecha_reporte, r.urgente "
-                "FROM reports r WHERE (r.comentario LIKE ? OR r.ciudad LIKE ? OR r.categoria_problema LIKE ?) "
-                "AND (" + where_clause + ") ORDER BY r.fecha_reporte DESC LIMIT ?"
-            )
-            params_like = [like, like, like] + filters_params + [k]
-            rows = conn.execute(sql_like, params_like).fetchall()
+                params_fts = [fts_q] + filters_params + [k]
+                try:
+                    rows = conn.execute(sql_fts, params_fts).fetchall()
+                    contexts = [dict(row) for row in rows]
+                    return contexts, True
+                except sqlite3.OperationalError:
+                    # Fall through to LIKE mode
+                    used_fts = False
 
+        # Fallback LIKE across important text columns
+        like = f"%{query}%"
+        sql_like = (
+            "SELECT r.id, r.comentario, r.ciudad, r.categoria_problema, r.fecha_reporte, r.urgente "
+            "FROM reports r WHERE (r.comentario LIKE ? OR r.ciudad LIKE ? OR r.categoria_problema LIKE ?) "
+            "AND (" + where_clause + ") ORDER BY r.fecha_reporte DESC LIMIT ?"
+        )
+        params_like = [like, like, like] + filters_params + [k]
+        rows = conn.execute(sql_like, params_like).fetchall()
         contexts = [dict(row) for row in rows]
-        return contexts, used_fts
+        return contexts, False
     finally:
         conn.close()
