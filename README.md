@@ -29,6 +29,7 @@ python -m ruff format .
 - Instala dependencias mínimas: `pip install fastapi uvicorn httpx`
 - Ajusta `DB_PATH` si deseas otro SQLite (por defecto `data/db/reports.sqlite`).
 - Ajusta `LLM_URL` si tu servidor de LLM no está en `http://localhost:8081`.
+- CORS (dev): configura `CORS_ALLOW_ORIGINS` (por defecto `*`). Ej.: `set CORS_ALLOW_ORIGINS=http://localhost:5173`.
 - Arranca la API: `uvicorn app.main:app --host 0.0.0.0 --port 8011`
 - Status: `curl http://localhost:8011/status`
 - Consulta (devuelve solo la respuesta):
@@ -39,9 +40,9 @@ python -m ruff format .
 - Descarga el modelo: `docker compose run --rm model-puller`
 - Arranca los servicios: `docker compose up -d llm api`
 - Ruta del modelo: `./models/mistral-7b-instruct-v0.2.Q4_K_M.gguf`
-- La API: `http://localhost:8000` y el LLM: `http://localhost:8080`
+- La API: `http://localhost:8011` y el LLM: `http://localhost:8081`
 - Ejemplo de consulta:
-  - `curl -X POST http://localhost:8000/ask -H "Content-Type: application/json" -d '{"question":"¿Cuáles son los principales problemas en Medellín?","k":6}'`
+  - `curl -X POST http://localhost:8011/ask -H "Content-Type: application/json" -d '{"texto":"¿Cuáles son los principales problemas en Medellín?"}'`
 
 # Análisis estadístico (gráficas)
 - Instala librerías: `pip install -r requirements.txt`

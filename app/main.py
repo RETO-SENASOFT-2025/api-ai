@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from typing import Optional, Dict, Any, List
 
+import os
 import httpx
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .settings import LLM_URL, N_PREDICT, TEMPERATURE, TOP_K, TOP_P, MAX_CTX_DOCS, LLM_TIMEOUT_SECONDS
@@ -13,6 +15,16 @@ import unicodedata
 import re
 
 app = FastAPI(title="RAG API - Mistral + SQLite FTS5")
+
+_origins_env = os.getenv("CORS_ALLOW_ORIGINS", "*")
+_origins = ["*"] if _origins_env.strip() == "*" else [o.strip() for o in _origins_env.split(",") if o.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class AskRequest(BaseModel):
