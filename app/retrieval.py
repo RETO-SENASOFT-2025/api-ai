@@ -14,9 +14,10 @@ def _connect() -> sqlite3.Connection:
 
 def _has_fts(conn: sqlite3.Connection) -> bool:
     cur = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='report_search'"
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='report_search'"
     )
-    return cur.fetchone() is not None
+    row = cur.fetchone()
+    return bool(row and row["sql"] and "using fts5" in row["sql"].lower())
 
 
 def _apply_filters(where: List[str], params: List[Any], filters: Optional[Dict[str, Any]]) -> None:
@@ -52,9 +53,9 @@ def search_reports(query: str, k: int = 8, filters: Optional[Dict[str, Any]] = N
         if used_fts:
             sql = (
                 "SELECT r.id, r.comentario, r.ciudad, r.categoria_problema, r.fecha_reporte, r.urgente "
-                "FROM report_search s JOIN reports r ON r.id = s.rowid "
-                "WHERE (s MATCH ?) AND (" + where_clause + ") "
-                "ORDER BY bm25(s) LIMIT ?"
+                "FROM report_search JOIN reports r ON r.id = report_search.rowid "
+                "WHERE (report_search MATCH ?) AND (" + where_clause + ") "
+                "ORDER BY bm25(report_search) LIMIT ?"
             )
             params = [query] + params + [k]
         else:
@@ -72,3 +73,4 @@ def search_reports(query: str, k: int = 8, filters: Optional[Dict[str, Any]] = N
         return contexts, used_fts
     finally:
         conn.close()
+
