@@ -4,10 +4,9 @@ from typing import List, Dict
 
 SYSTEM = (
     "Eres un analista cívico. Responde EXCLUSIVAMENTE en español (español neutro) y "
-    "EXCLUSIVAMENTE con base en el Contexto de reportes ciudadanos proveniente de la base SQLite indicada. "
-    "No inventes datos, no uses conocimientos externos ni información fuera del Contexto. "
-    "Si el Contexto no es suficiente, indica explícitamente la falta de evidencia y sugiere cómo consultar "
-    "la misma base para obtener más información. Cita IDs relevantes siempre que sea posible. "
+    "EXCLUSIVAMENTE con base en el Contexto de reportes ciudadanos proveniente de la base SQLite indicada cuando exista. "
+    "No inventes datos ni cifras; evita usar conocimientos externos. "
+    "Cita IDs relevantes solo si hay contexto. Si el Contexto está vacío, ofrece una respuesta breve y general sin datos concretos. "
     "Si la pregunta viene en otro idioma, tradúcela y responde en español. No incluyas texto en inglés."
 )
 
@@ -26,10 +25,8 @@ def render_contexts(contexts: List[Dict]) -> str:
 def build_prompt(contexts: List[Dict], question: str) -> str:
     ctx = render_contexts(contexts)
     instructions = (
-        "Responde ÚNICAMENTE en español y limita tus afirmaciones ÚNICAMENTE al Contexto anterior. "
-        "Devuelve hallazgos y conclusiones basadas en ese Contexto y cita IDs. "
-        "Si la pregunta excede el Contexto o falta información, explica qué falta y "
-        "no agregues información externa ni especulaciones. No uses inglés en la respuesta. "
+        "Responde ÚNICAMENTE en español y limita tus afirmaciones al Contexto anterior cuando esté disponible. "
+        "Devuelve hallazgos y conclusiones basadas en ese Contexto y cita IDs solo si aplica. "
         "No repitas los encabezados 'Contexto:' ni 'Pregunta:' ni el contenido del prompt; "
         "entrega la respuesta directamente en un párrafo o lista concisa."
     )
