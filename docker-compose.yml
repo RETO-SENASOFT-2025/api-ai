@@ -1,0 +1,40 @@
+services:
+  etl:
+    build:
+      context: .
+      dockerfile: Dockerfile.etl
+    command: python -m etl.main_etl
+    environment:
+      - DATASET_PATH=/app/data/dataset/dataset.csv
+    volumes:
+      - ./data:/app/data
+      - ./internal/assets:/app/internal/assets
+    # Run once to produce outputs, then container exits
+
+  model-puller:
+    image: curlimages/curl:8.10.1
+    command: ["-L", "-o", "/models/mistral-7b-instruct-v0.2.Q4_K_M.gguf", "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf"]
+    volumes:
+      - ./models:/models
+
+  llm:
+    image: ghcr.io/ggerganov/llama.cpp:server
+    command: ["-m", "/models/mistral-7b-instruct-v0.2.Q4_K_M.gguf", "-c", "4096", "--host", "0.0.0.0", "--port", "8080"]
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./models:/models
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    environment:
+      - DB_PATH=/app/data/db/reports.sqlite
+      - LLM_URL=http://llm:8080
+    depends_on:
+      - llm
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "8000:8000"
