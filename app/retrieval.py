@@ -45,32 +45,44 @@ def search_reports(query: str, k: int = 8, filters: Optional[Dict[str, Any]] = N
     conn = _connect()
     try:
         used_fts = _has_fts(conn)
-        params: List[Any] = []
+        filters_params: List[Any] = []
         where: List[str] = []
-        _apply_filters(where, params, filters)
+        _apply_filters(where, filters_params, filters)
         where_clause = (" AND ".join(where)) if where else "1=1"
 
         if used_fts:
-            sql = (
+            sql_fts = (
                 "SELECT r.id, r.comentario, r.ciudad, r.categoria_problema, r.fecha_reporte, r.urgente "
                 "FROM report_search JOIN reports r ON r.id = report_search.rowid "
                 "WHERE (report_search MATCH ?) AND (" + where_clause + ") "
                 "ORDER BY bm25(report_search) LIMIT ?"
             )
-            params = [query] + params + [k]
+            params_fts = [query] + filters_params + [k]
+            try:
+                rows = conn.execute(sql_fts, params_fts).fetchall()
+            except sqlite3.OperationalError:
+                # Fallback gracefully if FTS is misconfigured or unavailable
+                used_fts = False
+                like = f"%{query}%"
+                sql_like = (
+                    "SELECT r.id, r.comentario, r.ciudad, r.categoria_problema, r.fecha_reporte, r.urgente "
+                    "FROM reports r WHERE (r.comentario LIKE ? OR r.ciudad LIKE ? OR r.categoria_problema LIKE ?) "
+                    "AND (" + where_clause + ") ORDER BY r.fecha_reporte DESC LIMIT ?"
+                )
+                params_like = [like, like, like] + filters_params + [k]
+                rows = conn.execute(sql_like, params_like).fetchall()
         else:
             # Fallback LIKE across important text columns
             like = f"%{query}%"
-            sql = (
+            sql_like = (
                 "SELECT r.id, r.comentario, r.ciudad, r.categoria_problema, r.fecha_reporte, r.urgente "
                 "FROM reports r WHERE (r.comentario LIKE ? OR r.ciudad LIKE ? OR r.categoria_problema LIKE ?) "
                 "AND (" + where_clause + ") ORDER BY r.fecha_reporte DESC LIMIT ?"
             )
-            params = [like, like, like] + params + [k]
+            params_like = [like, like, like] + filters_params + [k]
+            rows = conn.execute(sql_like, params_like).fetchall()
 
-        rows = conn.execute(sql, params).fetchall()
         contexts = [dict(row) for row in rows]
         return contexts, used_fts
     finally:
-        conn.close()
-
+        conn.close()
