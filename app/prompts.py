@@ -29,6 +29,8 @@ def build_prompt(contexts: List[Dict], question: str) -> str:
         "Responde ÚNICAMENTE en español y limita tus afirmaciones ÚNICAMENTE al Contexto anterior. "
         "Devuelve hallazgos y conclusiones basadas en ese Contexto y cita IDs. "
         "Si la pregunta excede el Contexto o falta información, explica qué falta y "
-        "no agregues información externa ni especulaciones. No uses inglés en la respuesta."
+        "no agregues información externa ni especulaciones. No uses inglés en la respuesta. "
+        "No repitas los encabezados 'Contexto:' ni 'Pregunta:' ni el contenido del prompt; "
+        "entrega la respuesta directamente en un párrafo o lista concisa."
     )
     return f"{SYSTEM}\n\nContexto:\n{ctx}\n\nPregunta:\n{question}\n\n{instructions}\n"
