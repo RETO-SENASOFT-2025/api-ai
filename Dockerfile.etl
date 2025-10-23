@@ -1,0 +1,21 @@
+# ETL container with SQLite FTS5 support (via Debian libsqlite)
+FROM python:3.13.9-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Ensure sqlite3 CLI present; Python's sqlite3 links against system lib with FTS5 in Debian
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    sqlite3 ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt ./requirements.txt
+RUN pip install --upgrade pip wheel setuptools && \
+    pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+# Default command runs the ETL. You can override in compose.
+CMD ["python", "-m", "etl.main_etl"]
