@@ -16,8 +16,6 @@ services:
     command: ["-L", "-o", "/models/mistral-7b-instruct-v0.2.Q4_K_M.gguf", "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf"]
     volumes:
       - ./models:/models
-    networks:
-      - sena-net
 
   llm:
     image: ghcr.io/ggerganov/llama.cpp:server
@@ -26,6 +24,10 @@ services:
       - "8081:8081"
     volumes:
       - ./models:/models
+    networks:
+      sena-net:
+        aliases:
+          - llm
 
   api:
     build:
@@ -39,12 +41,11 @@ services:
     volumes:
       - ./data:/app/data
     ports:
-      - "8011:8000"
+      - "8011:8011"
     networks:
       sena-net:
         aliases:
           - ai-backend
-
 
 networks:
   sena-net:
