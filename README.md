@@ -32,7 +32,7 @@ python -m ruff format .
 - Status: `curl http://localhost:8011/status`
 - Consulta (devuelve solo la respuesta):
   - `curl -X POST http://localhost:8011/ask -H "Content-Type: application/json" -d '{"texto":"¿Cuáles son los principales problemas en Medellín?"}'`
-- Comportamiento sin evidencia: si no hay contexto relevante, la API no invoca al LLM y devuelve: "No hay evidencia suficiente en la base de datos para responder esta consulta."
+- Comportamiento sin evidencia: la API siempre invoca al modelo; si el Contexto está vacío, la respuesta será breve y general (sin inventar datos).
 
 # API + LLM con Docker
 - Descarga el modelo: `docker compose run --rm model-puller`
@@ -43,5 +43,15 @@ python -m ruff format .
   - `curl -X POST http://localhost:8011/ask -H "Content-Type: application/json" -d '{"texto":"¿Cuáles son los principales problemas en Medellín?"}'`
 - Timeouts y rendimiento:
   - Ajusta `LLM_TIMEOUT_SECONDS` (por defecto `180`) y `N_PREDICT` (por defecto `80`) vía variables de entorno si lo necesitas.
+
+
+
+# Respuestas determinísticas en /ask
+- `/ask` detecta intenciones de cálculo frecuentes y el modelo responde con cifras usando Estadísticas agregadas incluidas en el Contexto:
+  - "¿Cuántos registros hay?" → "Hay N registros en total."
+  - "¿Cuántos urgentes hay?" → "Hay N reportes urgentes en total."
+  - "¿Qué ciudad tiene más reportes?" → "La ciudad con más reportes es X con N registros."
+  - "¿Cuál categoría tiene más reportes?" → "La categoría con más reportes es Y con N registros."
+  - "¿Cuál mes tiene más reportes?" → "El mes con más reportes es AAAA-MM con N registros."
 
 -> deactivate
