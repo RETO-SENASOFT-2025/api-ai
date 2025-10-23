@@ -14,6 +14,7 @@ python -m ruff format .
 # ETL del dataset
 - Instala dependencias: `pip install -r requirements.txt`
 - Ejecuta ETL: `python -m etl.main_etl`
+- Salida CSV: `data/processed/dataset_clean.csv`
 - Base SQLite: `data/db/reports.sqlite`
 - Tablas: `reports` (principal) y `report_search` (FTS)
 
@@ -38,20 +39,19 @@ python -m ruff format .
 - Descarga el modelo: `docker compose run --rm model-puller`
 - Arranca los servicios: `docker compose up -d llm api`
 - Ruta del modelo: `./models/mistral-7b-instruct-v0.2.Q4_K_M.gguf`
-- La API: `http://localhost:8011` y el LLM: `http://localhost:8081`
-- Consulta (devuelve solo la respuesta):
-  - `curl -X POST http://localhost:8011/ask -H "Content-Type: application/json" -d '{"texto":"¿Cuáles son los principales problemas en Medellín?"}'`
-- Timeouts y rendimiento:
-  - Ajusta `LLM_TIMEOUT_SECONDS` (por defecto `180`) y `N_PREDICT` (por defecto `80`) vía variables de entorno si lo necesitas.
+- La API: `http://localhost:8000` y el LLM: `http://localhost:8080`
+- Ejemplo de consulta:
+  - `curl -X POST http://localhost:8000/ask -H "Content-Type: application/json" -d '{"question":"¿Cuáles son los principales problemas en Medellín?","k":6}'`
 
-
-
-# Respuestas determinísticas en /ask
-- `/ask` detecta intenciones de cálculo frecuentes y el modelo responde con cifras usando Estadísticas agregadas incluidas en el Contexto:
-  - "¿Cuántos registros hay?" → "Hay N registros en total."
-  - "¿Cuántos urgentes hay?" → "Hay N reportes urgentes en total."
-  - "¿Qué ciudad tiene más reportes?" → "La ciudad con más reportes es X con N registros."
-  - "¿Cuál categoría tiene más reportes?" → "La categoría con más reportes es Y con N registros."
-  - "¿Cuál mes tiene más reportes?" → "El mes con más reportes es AAAA-MM con N registros."
+# Análisis estadístico (gráficas)
+- Instala librerías: `pip install -r requirements.txt`
+- Genera gráficas desde SQLite:
+  - Local: `python -m analysis.visualizations --db-path data/db/reports.sqlite --out-dir data/analysis`
+  - Docker (opcional montando código): agrega `- ./:/app` al servicio `etl` en `docker-compose.yml` y ejecuta dentro: `python -m analysis.visualizations --db-path /app/data/db/reports.sqlite --out-dir /app/data/analysis`
+- Salidas generadas en `data/analysis/`:
+  - `heatmap_correlaciones.png`, `heatmap_ciudad_categoria.png`
+  - `bar_categorias.png`, `bar_ciudades.png`, `bar_urgente.png`
+  - `line_diario.png`, `line_mensual.png`
+- Resumen de integración DB: `data/analysis/summary.json` (incluye presencia de FTS, #filas, índices y rutas de gráficas).
 
 -> deactivate
