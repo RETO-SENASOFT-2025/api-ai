@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import re
 from typing import List, Dict, Any, Optional, Tuple
 
 from .settings import DB_PATH
@@ -14,9 +15,17 @@ def _connect() -> sqlite3.Connection:
 
 def _has_fts(conn: sqlite3.Connection) -> bool:
     cur = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='report_search'"
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='report_search'"
     )
-    return cur.fetchone() is not None
+    row = cur.fetchone()
+    return bool(row and row["sql"] and "using fts5" in row["sql"].lower())
+
+
+def _fts_safe_query(q: str) -> str:
+    # Remove punctuation that breaks FTS grammar (e.g., commas) and normalize spaces
+    s = re.sub(r"[^\w\s]", " ", q)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
 
 
 def _apply_filters(where: List[str], params: List[Any], filters: Optional[Dict[str, Any]]) -> None:
@@ -44,31 +53,168 @@ def search_reports(query: str, k: int = 8, filters: Optional[Dict[str, Any]] = N
     conn = _connect()
     try:
         used_fts = _has_fts(conn)
-        params: List[Any] = []
+        filters_params: List[Any] = []
         where: List[str] = []
-        _apply_filters(where, params, filters)
+        _apply_filters(where, filters_params, filters)
         where_clause = (" AND ".join(where)) if where else "1=1"
 
         if used_fts:
-            sql = (
-                "SELECT r.id, r.comentario, r.ciudad, r.categoria_problema, r.fecha_reporte, r.urgente "
-                "FROM report_search s JOIN reports r ON r.id = s.rowid "
-                "WHERE (s MATCH ?) AND (" + where_clause + ") "
-                "ORDER BY bm25(s) LIMIT ?"
-            )
-            params = [query] + params + [k]
-        else:
-            # Fallback LIKE across important text columns
-            like = f"%{query}%"
-            sql = (
-                "SELECT r.id, r.comentario, r.ciudad, r.categoria_problema, r.fecha_reporte, r.urgente "
-                "FROM reports r WHERE (r.comentario LIKE ? OR r.ciudad LIKE ? OR r.categoria_problema LIKE ?) "
-                "AND (" + where_clause + ") ORDER BY r.fecha_reporte DESC LIMIT ?"
-            )
-            params = [like, like, like] + params + [k]
+            fts_q = _fts_safe_query(query)
+            if not fts_q:
+                # If after sanitization the query is empty, skip FTS
+                used_fts = False
+            else:
+                sql_fts = (
+                    "SELECT r.id, r.comentario, r.ciudad, r.categoria_problema, r.fecha_reporte, r.urgente "
+                    "FROM report_search JOIN reports r ON r.id = report_search.rowid "
+                    "WHERE (report_search MATCH ?) AND (" + where_clause + ") "
+                    "ORDER BY bm25(report_search) LIMIT ?"
+                )
+                params_fts = [fts_q] + filters_params + [k]
+                try:
+                    rows = conn.execute(sql_fts, params_fts).fetchall()
+                    contexts = [dict(row) for row in rows]
+                    return contexts, True
+                except sqlite3.OperationalError:
+                    # Fall through to LIKE mode
+                    used_fts = False
 
-        rows = conn.execute(sql, params).fetchall()
+        # Fallback LIKE across important text columns
+        like = f"%{query}%"
+        sql_like = (
+            "SELECT r.id, r.comentario, r.ciudad, r.categoria_problema, r.fecha_reporte, r.urgente "
+            "FROM reports r WHERE (r.comentario LIKE ? OR r.ciudad LIKE ? OR r.categoria_problema LIKE ?) "
+            "AND (" + where_clause + ") ORDER BY r.fecha_reporte DESC LIMIT ?"
+        )
+        params_like = [like, like, like] + filters_params + [k]
+        rows = conn.execute(sql_like, params_like).fetchall()
         contexts = [dict(row) for row in rows]
-        return contexts, used_fts
+        return contexts, False
+    finally:
+        conn.close()
+
+
+def count_reports(filters: Optional[Dict[str, Any]] = None) -> int:
+    conn = _connect()
+    try:
+        where: List[str] = []
+        params: List[Any] = []
+        _apply_filters(where, params, filters)
+        where_clause = (" AND ".join(where)) if where else "1=1"
+        sql = "SELECT COUNT(*) AS cnt FROM reports r WHERE " + where_clause
+        row = conn.execute(sql, params).fetchone()
+        return int(row["cnt"]) if row else 0
+    finally:
+        conn.close()
+
+
+def count_reports_by_city(filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    conn = _connect()
+    try:
+        where: List[str] = []
+        params: List[Any] = []
+        _apply_filters(where, params, filters)
+        where_clause = (" AND ".join(where)) if where else "1=1"
+        sql = (
+            "SELECT r.ciudad AS ciudad, COUNT(*) AS cnt FROM reports r WHERE "
+            + where_clause
+            + " GROUP BY r.ciudad ORDER BY cnt DESC"
+        )
+        rows = conn.execute(sql, params).fetchall()
+        return [{"ciudad": row["ciudad"], "count": int(row["cnt"])} for row in rows]
+    finally:
+        conn.close()
+
+
+def count_reports_by_category(filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    conn = _connect()
+    try:
+        where: List[str] = []
+        params: List[Any] = []
+        _apply_filters(where, params, filters)
+        where_clause = (" AND ".join(where)) if where else "1=1"
+        sql = (
+            "SELECT r.categoria_problema AS categoria, COUNT(*) AS cnt FROM reports r WHERE "
+            + where_clause
+            + " GROUP BY r.categoria_problema ORDER BY cnt DESC"
+        )
+        rows = conn.execute(sql, params).fetchall()
+        return [{"categoria": row["categoria"], "count": int(row["cnt"])} for row in rows]
+    finally:
+        conn.close()
+
+
+def count_urgent_reports(filters: Optional[Dict[str, Any]] = None) -> int:
+    conn = _connect()
+    try:
+        where: List[str] = []
+        params: List[Any] = []
+        # Force urgente=1 in filters copy
+        f = dict(filters) if filters else {}
+        f["urgente"] = True
+        _apply_filters(where, params, f)
+        where_clause = (" AND ".join(where)) if where else "1=1"
+        sql = "SELECT COUNT(*) AS cnt FROM reports r WHERE " + where_clause
+        row = conn.execute(sql, params).fetchone()
+        return int(row["cnt"]) if row else 0
+    finally:
+        conn.close()
+
+
+def count_urgent_by_city(filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    conn = _connect()
+    try:
+        where: List[str] = []
+        params: List[Any] = []
+        f = dict(filters) if filters else {}
+        f["urgente"] = True
+        _apply_filters(where, params, f)
+        where_clause = (" AND ".join(where)) if where else "1=1"
+        sql = (
+            "SELECT r.ciudad AS ciudad, COUNT(*) AS cnt FROM reports r WHERE "
+            + where_clause
+            + " GROUP BY r.ciudad ORDER BY cnt DESC"
+        )
+        rows = conn.execute(sql, params).fetchall()
+        return [{"ciudad": row["ciudad"], "count": int(row["cnt"])} for row in rows]
+    finally:
+        conn.close()
+
+
+def count_urgent_by_category(filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    conn = _connect()
+    try:
+        where: List[str] = []
+        params: List[Any] = []
+        f = dict(filters) if filters else {}
+        f["urgente"] = True
+        _apply_filters(where, params, f)
+        where_clause = (" AND ".join(where)) if where else "1=1"
+        sql = (
+            "SELECT r.categoria_problema AS categoria, COUNT(*) AS cnt FROM reports r WHERE "
+            + where_clause
+            + " GROUP BY r.categoria_problema ORDER BY cnt DESC"
+        )
+        rows = conn.execute(sql, params).fetchall()
+        return [{"categoria": row["categoria"], "count": int(row["cnt"])} for row in rows]
+    finally:
+        conn.close()
+
+
+def monthly_counts(filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    """Counts grouped by YYYY-MM month based on fecha_reporte string (first 7 chars)."""
+    conn = _connect()
+    try:
+        where: List[str] = []
+        params: List[Any] = []
+        _apply_filters(where, params, filters)
+        where_clause = (" AND ".join(where)) if where else "1=1"
+        sql = (
+            "SELECT substr(r.fecha_reporte, 1, 7) AS mes, COUNT(*) AS cnt FROM reports r WHERE "
+            + where_clause
+            + " GROUP BY mes ORDER BY mes ASC"
+        )
+        rows = conn.execute(sql, params).fetchall()
+        return [{"mes": row["mes"], "count": int(row["cnt"])} for row in rows]
     finally:
         conn.close()

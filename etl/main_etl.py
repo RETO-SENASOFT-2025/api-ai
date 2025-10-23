@@ -10,13 +10,22 @@ from etl.transform.clean_dataset import transform_dataset
 from etl.load.store_sqlite import build_sqlite_db
 
 
-# CSV export deshabilitado: ETL ahora solo construye la base SQLite
+PROCESSED_CSV_PATH = os.path.join("data", "processed", "dataset_clean.csv")
+
+def _ensure_dirs(path: str) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
 
 
-def run_etl(input_path: str | None = None) -> str:
-    """Run ETL on the dataset and build SQLite DB only.
+def _verify_file_written(path: str) -> None:
+    abs_path = os.path.abspath(path)
+    if not os.path.isfile(path):
+        raise RuntimeError(f"No se generó el CSV en: {abs_path}")
 
-    Returns sqlite_abs_path
+
+def run_etl(input_path: str | None = None) -> Tuple[str, str]:
+    """Run ETL on the dataset and export CSV and SQLite DB.
+
+    Returns (processed_csv_abs_path, sqlite_abs_path)
     """
     # Extract
     src_df = read_dataset(input_path)
@@ -26,15 +35,21 @@ def run_etl(input_path: str | None = None) -> str:
     clean_df = transform_dataset(src_df)
     clean_count = len(clean_df)
 
-    # Build SQLite DB only
+    # Export CSV
+    _ensure_dirs(PROCESSED_CSV_PATH)
+    clean_df.to_csv(PROCESSED_CSV_PATH, index=False, encoding="utf-8")
+    _verify_file_written(PROCESSED_CSV_PATH)
+
+    # Build SQLite DB
     sqlite_path = build_sqlite_db(clean_df)
 
     print(
         f"ETL completed. Rows: source={src_count}, cleaned={clean_count}.\n"
+        f"CSV: {os.path.abspath(PROCESSED_CSV_PATH)}\n"
         f"SQLite: {sqlite_path}"
     )
 
-    return sqlite_path
+    return os.path.abspath(PROCESSED_CSV_PATH), sqlite_path
 
 
 if __name__ == "__main__":

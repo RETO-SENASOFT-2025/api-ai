@@ -19,9 +19,9 @@ services:
 
   llm:
     image: ghcr.io/ggerganov/llama.cpp:server
-    command: ["-m", "/models/mistral-7b-instruct-v0.2.Q4_K_M.gguf", "-c", "4096", "--host", "0.0.0.0", "--port", "8080"]
+    command: ["-m", "/models/mistral-7b-instruct-v0.2.Q4_K_M.gguf", "-c", "4096", "--host", "0.0.0.0", "--port", "8081"]
     ports:
-      - "8080:8080"
+      - "8081:8081"
     volumes:
       - ./models:/models
 
@@ -31,10 +31,11 @@ services:
       dockerfile: Dockerfile.api
     environment:
       - DB_PATH=/app/data/db/reports.sqlite
-      - LLM_URL=http://llm:8080
+      - LLM_URL=http://llm:8081
     depends_on:
       - llm
     volumes:
       - ./data:/app/data
     ports:
-      - "8000:8000"
+      - "8011:8011"
+

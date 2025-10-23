@@ -8,7 +8,6 @@ import pandas as pd
 # Paths are relative to repo root
 DEFAULT_INPUT_PATHS = [
     os.path.join("data", "dataset", "dataset.csv"),
-    os.path.join("internal", "assets", "dataset.csv"),
 ]
 
 
